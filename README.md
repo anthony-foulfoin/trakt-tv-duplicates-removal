@@ -31,7 +31,7 @@ You will need the `Client ID` and the `Client Secret` from that page.
 ### The script  
 You will need python3 and pip installed and in your path
  
- 1. Start by doing a `pip install` at the root of the project 
+ 1. Start by doing a `pip3 install -r requirements.txt` at the root of the project 
  2. Edit the script to set the `client_id` and `client_secret` variables with the ones you obtained on your trakt.tv api application
  3. Edit the script to set the `username`variable with your trakt.tv username (you can find it in your settings: https://trakt.tv/settings)
  4. Optionally you can modify the `types` variable to run the script only for **movies** or **episodes**
