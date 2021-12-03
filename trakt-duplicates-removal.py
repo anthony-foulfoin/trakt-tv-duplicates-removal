@@ -8,6 +8,7 @@ username = 'YOUR USERNAME'
 
 # Optional
 types = ['movies', 'episodes']  # 'movies' or 'episodes' or both
+keep_per_day = False        # set to True to keep one entry per day
 
 
 # Don't edit the informations bellow
@@ -90,14 +91,15 @@ def remove_duplicate(history, type):
 
     entry_type = 'movie' if type == 'movies' else 'episode'
 
-    entries = []
+    entries = {}
     duplicates = []
 
     for i in history[::-1]:
         if i[entry_type]['ids']['trakt'] in entries:
-            duplicates.append(i['id'])
+            if not keep_per_day or i['watched_at'].split('T')[0] == entries.get(i[entry_type]['ids']['trakt']):
+                duplicates.append(i['id'])
         else:
-            entries.append(i[entry_type]['ids']['trakt'])
+            entries[i[entry_type]['ids']['trakt']] = i['watched_at'].split('T')[0]
 
     if len(duplicates) > 0:
         print('%s %s duplicates plays to be removed' % (len(duplicates), type))

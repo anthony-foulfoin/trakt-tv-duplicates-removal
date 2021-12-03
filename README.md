@@ -35,7 +35,8 @@ You will need python3 and pip installed and in your path
  2. Edit the script to set the `client_id` and `client_secret` variables with the ones you obtained on your trakt.tv api application
  3. Edit the script to set the `username`variable with your trakt.tv username (you can find it in your settings: https://trakt.tv/settings)
  4. Optionally you can modify the `types` variable to run the script only for **movies** or **episodes**
- 5. Launch the script :  
+ 5. Optionally you can keep one entry per day (per show/movie) by setting the `keep_per_day` variable to `True`
+ 6. Launch the script:
 ```  
 python3 trakt-duplicates-removal.py  
 ```  
