@@ -25,6 +25,13 @@ python3 trakt-duplicates-removal.py
 
 Follow the script instructions
 
+### Contributors
+
+Thanks to 
+- [@lsoares](https://www.github.com/lsoares)
+
+For his contributions
+
 ### Credits
 
 Based on https://gist.github.com/blaulan/50d462696bce5da9225b8d596a8c6fb4
