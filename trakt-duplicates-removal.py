@@ -1,32 +1,32 @@
 import json
+import webbrowser
+
 import requests
 
-# Edit the informations bellow
-client_id = 'YOUR CLIENT ID'
-client_secret = 'YOUR CLIENT SECRET'
-username = 'YOUR USERNAME'
+print("- Register a new API app at: https://trakt.tv/oauth/applications/new or skip if you already have one (https://trakt.tv/oauth/applications)")
+print("- Fill the form with these details:")
+print("\tName: trakt-duplicates-removal")
+print("\tRedirect URI: urn:ietf:wg:oauth:2.0:oob")
+print("\tYou don't need to fill the other fields.")
+print("  Leave the app's page open.")
 
-# Optional
-types = ['movies', 'episodes']  # 'movies' or 'episodes' or both
-keep_per_day = False        # set to True to keep one entry per day
+client_id = input("- Enter your client ID: ")
+client_secret = input("- Enter your client secret: ")
+username = input("- Enter your username: ")
+types = []
+if input("- Include movies? (yes/no): ").strip().lower() == 'yes':
+    types.append('movies')
+if input("- Include episodes? (yes/no): ").strip().lower() == 'yes':
+    types.append('episodes')
+keep_per_day = input("- Remove repeated only on distinct days? (yes/no): ").strip().lower() == 'yes'
 
-
-# Don't edit the informations bellow
 trakt_api = 'https://api.trakt.tv'
-auth_get_token_url = '%s/oauth/token' % trakt_api
-get_history_url = '%s/users/%s/history/{type}?page={page}&limit={limit}' % (trakt_api, username)
-sync_history_url = '%s/sync/history/remove' % trakt_api
 
 session = requests.Session()
 
 
 def login_to_trakt():
-    print('Authentication')
-    print('Open the link in a browser and paste the pin')
-    print('https://trakt.tv/oauth/authorize?response_type=code&client_id=%s&redirect_uri=urn:ietf:wg:oauth:2.0:oob' % client_id)
-    print('')
-
-    pin = str(input('Pin: '))
+    webbrowser.open(f'https://trakt.tv/oauth/authorize?response_type=code&client_id={client_id}&redirect_uri=urn:ietf:wg:oauth:2.0:oob')
 
     session.headers.update({
         'Accept': 'application/json',
@@ -34,6 +34,7 @@ def login_to_trakt():
         'Connection': 'Keep-Alive'
     })
 
+    pin = str(input('- Paste the PIN: '))
     post_data = {
         'code': pin,
         'client_id': client_id,
@@ -42,6 +43,7 @@ def login_to_trakt():
         'grant_type': 'authorization_code'
     }
 
+    auth_get_token_url = '%s/oauth/token' % trakt_api
     request = session.post(auth_get_token_url, data=post_data)
     response = request.json()
 
@@ -65,10 +67,11 @@ def get_history(type):
         'type': type
     }
 
-    print('Retrieving history for %s' % type)
+    print('   ... retrieving history for %s' % type)
 
+    get_history_url = '%s/users/%s/history/{type}?page={page}&limit={limit}' % (trakt_api, username)
     while True:
-        print(get_history_url.format(**url_params))
+        print("\t" + get_history_url.format(**url_params))
         resp = session.get(get_history_url.format(**url_params))
 
         if resp.status_code != 200:
@@ -82,12 +85,12 @@ def get_history(type):
         else:
             break
 
-    print('Done retrieving %s history' % type)
+    print('   Done retrieving %s history' % type)
     return results
 
 
 def remove_duplicate(history, type):
-    print('Removing %s duplicates' % type)
+    print('   Removing %s duplicates' % type)
 
     entry_type = 'movie' if type == 'movies' else 'episode'
 
@@ -102,12 +105,13 @@ def remove_duplicate(history, type):
             entries[i[entry_type]['ids']['trakt']] = i['watched_at'].split('T')[0]
 
     if len(duplicates) > 0:
-        print('%s %s duplicates plays to be removed' % (len(duplicates), type))
+        print('   %s %s duplicates plays to be removed' % (len(duplicates), type))
 
+        sync_history_url = '%s/sync/history/remove' % trakt_api
         session.post(sync_history_url, json={'ids': duplicates})
-        print('%s %s duplicates successfully removed!' % (len(duplicates), type))
+        print('   %s %s duplicates successfully removed!' % (len(duplicates), type))
     else:
-        print('No %s duplicates found' % type)
+        print('   No %s duplicates found' % type)
 
 
 if __name__ == '__main__':
@@ -117,7 +121,7 @@ if __name__ == '__main__':
         history = get_history(type)
         with open('%s.json' % type, 'w') as output:
             json.dump(history, output, indent=4)
-            print('History saved in file %s.json' % type)
+            print('   History saved in file %s.json' % type)
 
         remove_duplicate(history, type)
         print()
