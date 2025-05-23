@@ -11,7 +11,8 @@ For instance if you have 3 plays for the movie **Guardians of the Galaxy** at th
 If you choose to keep the oldest play, the script will keep the 2014-08-01T20:00:00.000Z entry and remove the others.
 If you choose to keep the newest play, the script will keep the 2018-02-05T21:00:00.000Z entry and remove the others.
 If there are no duplicates the script does nothing.
-The script backup your data in local json files (movies.json and episodes.json) before doing anything.
+
+The script provides a preview of what will be deleted and asks for confirmation before proceeding, so you can review the changes before they're applied. The script also backs up your data in local json files (movies.json and episodes.json) before doing anything.
 
 ## Getting Started
 
