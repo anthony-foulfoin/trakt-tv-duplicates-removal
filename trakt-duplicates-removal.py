@@ -19,6 +19,10 @@ if input("- Include movies? (yes/no): ").strip().lower() == 'yes':
 if input("- Include episodes? (yes/no): ").strip().lower() == 'yes':
     types.append('episodes')
 keep_per_day = input("- Remove repeated only on distinct days? (yes/no): ").strip().lower() == 'yes'
+keep_strategy = input("- Keep oldest or newest plays? (oldest/newest): ").strip().lower()
+if keep_strategy != 'oldest' and keep_strategy != 'newest':
+    print("Invalid option. Defaulting to 'oldest'.")
+    keep_strategy = 'oldest'
 
 trakt_api = 'https://api.trakt.tv'
 
@@ -96,13 +100,21 @@ def remove_duplicate(history, type):
 
     entries = {}
     duplicates = []
-
-    for i in history[::-1]:
-        if i[entry_type]['ids']['trakt'] in entries:
-            if not keep_per_day or i['watched_at'].split('T')[0] == entries.get(i[entry_type]['ids']['trakt']):
+    
+    # If keeping newest, we need to process the history in chronological order
+    # (The history array is already sorted from newest to oldest)
+    process_order = history if keep_strategy == 'newest' else history[::-1]
+    
+    for i in process_order:
+        trakt_id = i[entry_type]['ids']['trakt']
+        watched_date = i['watched_at'].split('T')[0]
+        
+        if trakt_id in entries:
+            # Check if it's a duplicate on the same day (if keeping per day)
+            if not keep_per_day or watched_date == entries[trakt_id][0]:
                 duplicates.append(i['id'])
         else:
-            entries[i[entry_type]['ids']['trakt']] = i['watched_at'].split('T')[0]
+            entries[trakt_id] = (watched_date, i['id'])
 
     if len(duplicates) > 0:
         print('   %s %s duplicates plays to be removed' % (len(duplicates), type))
