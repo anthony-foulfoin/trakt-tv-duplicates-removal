@@ -19,6 +19,10 @@ if input("- Include movies? (yes/no): ").strip().lower() == 'yes':
 if input("- Include episodes? (yes/no): ").strip().lower() == 'yes':
     types.append('episodes')
 keep_per_day = input("- Remove repeated only on distinct days? (yes/no): ").strip().lower() == 'yes'
+keep_strategy = input("- Keep oldest or newest plays? (oldest/newest): ").strip().lower()
+if keep_strategy != 'oldest' and keep_strategy != 'newest':
+    print("Invalid option. Defaulting to 'oldest'.")
+    keep_strategy = 'oldest'
 
 trakt_api = 'https://api.trakt.tv'
 
@@ -90,26 +94,75 @@ def get_history(type):
 
 
 def remove_duplicate(history, type):
-    print('   Removing %s duplicates' % type)
+    print('   Finding %s duplicates' % type)
 
     entry_type = 'movie' if type == 'movies' else 'episode'
 
     entries = {}
     duplicates = []
-
-    for i in history[::-1]:
-        if i[entry_type]['ids']['trakt'] in entries:
-            if not keep_per_day or i['watched_at'].split('T')[0] == entries.get(i[entry_type]['ids']['trakt']):
+    duplicate_details = []
+    
+    # If keeping newest, we need to process the history in chronological order
+    # (The history array is already sorted from newest to oldest)
+    process_order = history if keep_strategy == 'newest' else history[::-1]
+    
+    # First identify which entries are to keep and which are duplicates
+    for i in process_order:
+        trakt_id = i[entry_type]['ids']['trakt']
+        watched_date = i['watched_at'].split('T')[0]
+        
+        if trakt_id in entries:
+            # Check if it's a duplicate on the same day (if keeping per day)
+            if not keep_per_day or watched_date == entries[trakt_id][0]:
                 duplicates.append(i['id'])
+                
+                # Save details for preview
+                if entry_type == 'movie':
+                    title = i['movie']['title']
+                else:
+                    show_title = i['show']['title']
+                    episode_title = i['episode']['title']
+                    season = i['episode']['season']
+                    number = i['episode']['number']
+                    title = f"{show_title} - S{season:02d}E{number:02d} - {episode_title}"
+                
+                duplicate_details.append({
+                    'id': i['id'],
+                    'title': title,
+                    'watched_at': i['watched_at']
+                })
         else:
-            entries[i[entry_type]['ids']['trakt']] = i['watched_at'].split('T')[0]
+            entries[trakt_id] = (watched_date, i['id'])
 
     if len(duplicates) > 0:
-        print('   %s %s duplicates plays to be removed' % (len(duplicates), type))
-
-        sync_history_url = '%s/sync/history/remove' % trakt_api
-        session.post(sync_history_url, json={'ids': duplicates})
-        print('   %s %s duplicates successfully removed!' % (len(duplicates), type))
+        print('   %s %s duplicates plays found' % (len(duplicates), type))
+        
+        # Preview the duplicates that will be removed
+        print("\n   PREVIEW OF ENTRIES TO BE DELETED:")
+        print("   --------------------------------")
+        
+        # Sort by title for a better display
+        duplicate_details.sort(key=lambda x: x['title'])
+        
+        for idx, item in enumerate(duplicate_details, 1):
+            print(f"   {idx}. {item['title']} - Watched on: {item['watched_at']}")
+        
+        print("\n   Total: %s %s duplicates" % (len(duplicates), type))
+        
+        # Ask user if they want to proceed
+        confirm = input("\n   Proceed with deletion? (yes/no): ").strip().lower()
+        
+        if confirm == 'yes':
+            sync_history_url = '%s/sync/history/remove' % trakt_api
+            response = session.post(sync_history_url, json={'ids': duplicates})
+            
+            if response.status_code == 200:
+                print('   %s %s duplicates successfully removed!' % (len(duplicates), type))
+            else:
+                print('   Error removing duplicates. Status code:', response.status_code)
+                print('   Response:', response.text)
+        else:
+            print('   Deletion cancelled.')
     else:
         print('   No %s duplicates found' % type)
 
