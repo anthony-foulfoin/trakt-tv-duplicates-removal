@@ -29,7 +29,7 @@ python3 trakt-duplicates-removal.py
 
 Thanks to 
 - [@lsoares](https://www.github.com/lsoares)
-- [@luigidotmoe)(https://www.github.com/luigidotmoe)
+- [@luigidotmoe](https://www.github.com/luigidotmoe)
 
 For his contributions
 
