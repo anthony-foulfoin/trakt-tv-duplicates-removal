@@ -14,14 +14,22 @@ client_id = input("- Enter your client ID: ")
 client_secret = input("- Enter your client secret: ")
 username = input("- Enter your username: ")
 types = []
+correct_movie_history = False
 if input("- Include movies? (yes/no): ").strip().lower() == 'yes':
     types.append('movies')
+    if input("- Correct movie history by setting watched date to release date? (yes/no): ").strip().lower() == 'yes':
+        correct_movie_history = True
 if input("- Include episodes? (yes/no): ").strip().lower() == 'yes':
     types.append('episodes')
-keep_per_day = input("- Remove repeated only on distinct days? (yes/no): ").strip().lower() == 'yes'
-keep_strategy = input("- Keep oldest or newest plays? (oldest/newest): ").strip().lower()
-if keep_strategy != 'oldest' and keep_strategy != 'newest':
-    print("Invalid option. Defaulting to 'oldest'.")
+
+if not correct_movie_history:
+    keep_per_day = input("- Remove repeated only on distinct days? (yes/no): ").strip().lower() == 'yes'
+    keep_strategy = input("- Keep oldest or newest plays? (oldest/newest): ").strip().lower()
+    if keep_strategy != 'oldest' and keep_strategy != 'newest':
+        print("Invalid option. Defaulting to 'oldest'.")
+        keep_strategy = 'oldest'
+else:
+    keep_per_day = False
     keep_strategy = 'oldest'
 
 trakt_api = 'https://api.trakt.tv'
@@ -92,6 +100,67 @@ def get_history(type):
     print('   Done retrieving %s history' % type)
     return results
 
+
+def correct_movie_history_func(history):
+    print('   Preparing to correct movie history...')
+
+    unique_movies = {}
+    for item in history:
+        movie = item['movie']
+        trakt_id = movie['ids']['trakt']
+        if trakt_id not in unique_movies:
+            unique_movies[trakt_id] = movie
+
+    ids_to_remove = [item['id'] for item in history]
+
+    movies_to_add = []
+    for trakt_id, movie in unique_movies.items():
+        # Assuming release date is in 'released' field.
+        # The format is likely 'YYYY-MM-DD'.
+        release_date = movie.get('released')
+        if release_date:
+            movies_to_add.append({
+                'watched_at': release_date,
+                'ids': movie['ids']
+            })
+
+    if not movies_to_add:
+        print('   No movies with release dates found. Aborting.')
+        return
+
+    print("\n   PREVIEW OF HISTORY CORRECTION:")
+    print("   ------------------------------")
+    print(f"   Movies to be removed: {len(ids_to_remove)}")
+    print(f"   Unique movies to be re-added: {len(movies_to_add)}")
+    for movie in movies_to_add:
+        title = [m['movie']['title'] for m in history if m['movie']['ids']['trakt'] == movie['ids']['trakt']][0]
+        print(f"   - {title} -> Watched at: {movie['watched_at']}")
+
+    confirm = input("\n   Proceed with history correction? (yes/no): ").strip().lower()
+    if confirm == 'yes':
+        # Remove all movie history
+        remove_url = '%s/sync/history/remove' % trakt_api
+        remove_payload = {'ids': ids_to_remove}
+        remove_response = session.post(remove_url, json=remove_payload)
+
+        if remove_response.status_code == 200:
+            print('   All movie history successfully removed.')
+
+            # Add movies back with release date as watched date
+            add_url = '%s/sync/history' % trakt_api
+            add_payload = {'movies': movies_to_add}
+            add_response = session.post(add_url, json=add_payload)
+
+            if add_response.status_code == 201:
+                print('   Movies successfully added back to history.')
+            else:
+                print('   Error adding movies back to history. Status code:', add_response.status_code)
+                print('   Response:', add_response.text)
+        else:
+            print('   Error removing movie history. Status code:', remove_response.status_code)
+            print('   Response:', remove_response.text)
+    else:
+        print('   History correction cancelled.')
 
 def remove_duplicate(history, type):
     print('   Finding %s duplicates' % type)
@@ -176,5 +245,8 @@ if __name__ == '__main__':
             json.dump(history, output, indent=4)
             print('   History saved in file %s.json' % type)
 
-        remove_duplicate(history, type)
+        if type == 'movies' and correct_movie_history:
+            correct_movie_history_func(history)
+        else:
+            remove_duplicate(history, type)
         print()
