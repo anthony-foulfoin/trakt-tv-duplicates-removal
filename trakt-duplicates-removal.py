@@ -1,18 +1,92 @@
 import json
 import webbrowser
+import os
 
 import requests
 
-print("- Register a new API app at: https://trakt.tv/oauth/applications/new or skip if you already have one (https://trakt.tv/oauth/applications)")
-print("- Fill the form with these details:")
-print("\tName: trakt-duplicates-removal")
-print("\tRedirect URI: urn:ietf:wg:oauth:2.0:oob")
-print("\tYou don't need to fill the other fields.")
-print("  Leave the app's page open.")
+CONFIG_FILE = 'auth_config.json'
 
-client_id = input("- Enter your client ID: ")
-client_secret = input("- Enter your client secret: ")
-username = input("- Enter your username: ")
+
+def load_config():
+    """Load authentication configuration from file if it exists."""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading config file: {e}")
+    return {}
+
+
+def save_config(config):
+    """Save authentication configuration to file."""
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=4)
+        print(f"Configuration saved to {CONFIG_FILE}")
+    except Exception as e:
+        print(f"Error saving config file: {e}")
+
+
+def get_user_input():
+    """Get user input for authentication, using saved values as defaults."""
+    config = load_config()
+
+    # Check if we have saved credentials first
+    if config.get('client_id') and config.get('client_secret') and config.get('username'):
+        print("Found saved credentials:")
+        print(f"  Client ID: {config['client_id'][:10]}...")
+        print(f"  Username: {config['username']}")
+        print()
+        print("Options:")
+        print("  1. Use saved credentials")
+        print("  2. Enter new credentials")
+        print("  3. Delete saved configuration")
+
+        choice = input("Choose option (1/2/3): ").strip()
+
+        if choice == '1':
+            return config['client_id'], config['client_secret'], config['username']
+        elif choice == '3':
+            if os.path.exists(CONFIG_FILE):
+                os.remove(CONFIG_FILE)
+                print(f"Configuration file {CONFIG_FILE} deleted.")
+            else:
+                print("No configuration file found.")
+            print("Please restart the script to enter new credentials.")
+            exit(0)
+        # If choice == '2' or invalid choice, continue to get new credentials
+        print()
+
+    # Only show API registration instructions when entering new credentials
+    print("- Register a new API app at: https://trakt.tv/oauth/applications/new or skip if you already have one (https://trakt.tv/oauth/applications)")
+    print("- Fill the form with these details:")
+    print("\tName: trakt-duplicates-removal")
+    print("\tRedirect URI: urn:ietf:wg:oauth:2.0:oob")
+    print("\tYou don't need to fill the other fields.")
+    print("  Leave the app's page open.")
+    print()
+
+    # Get new credentials
+    client_id = input("- Enter your client ID: ").strip()
+    client_secret = input("- Enter your client secret: ").strip()
+    username = input("- Enter your username: ").strip()
+
+    # Save credentials
+    save_credentials = input("Save these credentials for future use? (yes/no): ").strip().lower()
+    if save_credentials == 'yes':
+        new_config = {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'username': username
+        }
+        save_config(new_config)
+
+    return client_id, client_secret, username
+
+
+client_id, client_secret, username = get_user_input()
+
 types = []
 correct_movie_history = False
 if input("- Include movies? (yes/no): ").strip().lower() == 'yes':
@@ -38,6 +112,34 @@ session = requests.Session()
 
 
 def login_to_trakt():
+    # Check if we have a saved access token
+    config = load_config()
+
+    if config.get('access_token'):
+        print("Found saved access token, testing authentication...")
+
+        # Test the saved token
+        session.headers.update({
+            'Accept': 'application/json',
+            'User-Agent': 'Betaseries to Trakt',
+            'Connection': 'Keep-Alive',
+            'Content-Type': 'application/json',
+            'trakt-api-version': '2',
+            'trakt-api-key': client_id,
+            'Authorization': 'Bearer ' + config['access_token']
+        })
+
+        # Test token by making a simple API call
+        test_url = f'{trakt_api}/users/me'
+        test_response = session.get(test_url)
+
+        if test_response.status_code == 200:
+            print("Existing token is valid, skipping authentication.")
+            return
+        else:
+            print("Saved token is invalid, proceeding with new authentication...")
+
+    # Proceed with OAuth authentication
     webbrowser.open(f'https://trakt.tv/oauth/authorize?response_type=code&client_id={client_id}&redirect_uri=urn:ietf:wg:oauth:2.0:oob')
 
     session.headers.update({
@@ -61,6 +163,23 @@ def login_to_trakt():
 
     print(response)
     print()
+
+    # Save the new access token
+    if 'access_token' in response:
+        config = load_config()
+        config.update({
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'username': username,
+            'access_token': response['access_token']
+        })
+
+        # Also save refresh token if available
+        if 'refresh_token' in response:
+            config['refresh_token'] = response['refresh_token']
+
+        save_config(config)
+        print("Authentication tokens saved for future use.")
 
     session.headers.update({
         'Content-Type': 'application/json',
@@ -200,6 +319,7 @@ def correct_movie_history_func(history):
     else:
         print('   History correction cancelled.')
 
+
 def remove_duplicate(history, type):
     print('   Finding %s duplicates' % type)
 
@@ -208,21 +328,21 @@ def remove_duplicate(history, type):
     entries = {}
     duplicates = []
     duplicate_details = []
-    
+
     # If keeping newest, we need to process the history in chronological order
     # (The history array is already sorted from newest to oldest)
     process_order = history if keep_strategy == 'newest' else history[::-1]
-    
+
     # First identify which entries are to keep and which are duplicates
     for i in process_order:
         trakt_id = i[entry_type]['ids']['trakt']
         watched_date = i['watched_at'].split('T')[0]
-        
+
         if trakt_id in entries:
             # Check if it's a duplicate on the same day (if keeping per day)
             if not keep_per_day or watched_date == entries[trakt_id][0]:
                 duplicates.append(i['id'])
-                
+
                 # Save details for preview
                 if entry_type == 'movie':
                     title = i['movie']['title']
@@ -232,7 +352,7 @@ def remove_duplicate(history, type):
                     season = i['episode']['season']
                     number = i['episode']['number']
                     title = f"{show_title} - S{season:02d}E{number:02d} - {episode_title}"
-                
+
                 duplicate_details.append({
                     'id': i['id'],
                     'title': title,
@@ -243,26 +363,26 @@ def remove_duplicate(history, type):
 
     if len(duplicates) > 0:
         print('   %s %s duplicates plays found' % (len(duplicates), type))
-        
+
         # Preview the duplicates that will be removed
         print("\n   PREVIEW OF ENTRIES TO BE DELETED:")
         print("   --------------------------------")
-        
+
         # Sort by title for a better display
         duplicate_details.sort(key=lambda x: x['title'])
-        
+
         for idx, item in enumerate(duplicate_details, 1):
             print(f"   {idx}. {item['title']} - Watched on: {item['watched_at']}")
-        
+
         print("\n   Total: %s %s duplicates" % (len(duplicates), type))
-        
+
         # Ask user if they want to proceed
         confirm = input("\n   Proceed with deletion? (yes/no): ").strip().lower()
-        
+
         if confirm == 'yes':
             sync_history_url = '%s/sync/history/remove' % trakt_api
             response = session.post(sync_history_url, json={'ids': duplicates})
-            
+
             if response.status_code == 200:
                 print('   %s %s duplicates successfully removed!' % (len(duplicates), type))
             else:
