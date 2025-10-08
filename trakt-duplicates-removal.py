@@ -114,15 +114,53 @@ def correct_movie_history_func(history):
     ids_to_remove = [item['id'] for item in history]
 
     movies_to_add = []
+    print('   Fetching release dates from Trakt.tv API...')
+
     for trakt_id, movie in unique_movies.items():
-        # Assuming release date is in 'released' field.
-        # The format is likely 'YYYY-MM-DD'.
-        release_date = movie.get('released')
-        if release_date:
-            movies_to_add.append({
-                'watched_at': release_date,
-                'ids': movie['ids']
-            })
+        # Get detailed movie information from Trakt.tv API to fetch release date
+        movie_url = f'{trakt_api}/movies/{trakt_id}'
+        try:
+            movie_response = session.get(movie_url)
+            if movie_response.status_code == 200:
+                movie_details = movie_response.json()
+                release_date = movie_details.get('released')
+
+                if release_date:
+                    # Use the exact release date from API
+                    movies_to_add.append({
+                        'watched_at': release_date,
+                        'ids': movie['ids']
+                    })
+                else:
+                    # Fallback: Use January 1st of the release year if no precise date available
+                    year = movie.get('year')
+                    if year:
+                        fallback_date = f'{year}-01-01'
+                        movies_to_add.append({
+                            'watched_at': fallback_date,
+                            'ids': movie['ids']
+                        })
+                        print(f'   Warning: No release date found for "{movie["title"]}" ({year}), using {fallback_date}')
+            else:
+                # If API call fails, use January 1st of the release year as fallback
+                year = movie.get('year')
+                if year:
+                    fallback_date = f'{year}-01-01'
+                    movies_to_add.append({
+                        'watched_at': fallback_date,
+                        'ids': movie['ids']
+                    })
+                    print(f'   Warning: Could not fetch details for "{movie["title"]}" (API error), using {fallback_date}')
+        except Exception as e:
+            # If any error occurs, use January 1st of the release year as fallback
+            year = movie.get('year')
+            if year:
+                fallback_date = f'{year}-01-01'
+                movies_to_add.append({
+                    'watched_at': fallback_date,
+                    'ids': movie['ids']
+                })
+                print(f'   Warning: Error fetching details for "{movie["title"]}" ({e}), using {fallback_date}')
 
     if not movies_to_add:
         print('   No movies with release dates found. Aborting.')
