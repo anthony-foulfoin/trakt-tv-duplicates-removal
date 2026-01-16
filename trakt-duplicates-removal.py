@@ -1,6 +1,8 @@
 import json
 import webbrowser
 import os
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -110,6 +112,9 @@ trakt_api = 'https://api.trakt.tv'
 
 session = requests.Session()
 
+# Will be populated after login
+USER_TIMEZONE = "UTC"
+
 
 def login_to_trakt():
     # Check if we have a saved access token
@@ -187,6 +192,51 @@ def login_to_trakt():
         'trakt-api-key': client_id,
         'Authorization': 'Bearer ' + response["access_token"]
     })
+
+
+def get_trakt_user_timezone():
+    """
+    Fetch the user's Trakt timezone (IANA tz name) from /users/settings.
+    Falls back to 'UTC' if unavailable or request fails.
+    """
+    try:
+        resp = session.get(f"{trakt_api}/users/settings")
+        if resp.status_code != 200:
+            return "UTC"
+
+        data = resp.json() or {}
+        tz = (data.get("account", {}) or {}).get("timezone")
+        if not tz:
+            return "UTC"
+
+        # Validate it
+        ZoneInfo(tz)
+        return tz
+    except Exception:
+        return "UTC"
+
+
+def watched_date_in_tz(watched_at: str, tz_name: str) -> str:
+    """
+    Convert Trakt watched_at (ISO8601) into a YYYY-MM-DD in the given timezone.
+    Handles 'Z' suffix and date-only strings.
+    """
+    s = watched_at.strip()
+
+    # Date-only: treat as midnight UTC
+    if "T" not in s:
+        dt = datetime.fromisoformat(s + "T00:00:00+00:00")
+    else:
+        # Python's fromisoformat doesn't accept trailing Z
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+
+        # If naive, assume UTC (shouldn't normally happen, but safe)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt.astimezone(ZoneInfo(tz_name)).date().isoformat()
 
 
 def get_history(type):
@@ -325,7 +375,6 @@ def remove_duplicate(history, type):
 
     entry_type = 'movie' if type == 'movies' else 'episode'
 
-    entries = {}
     duplicates = []
     duplicate_details = []
 
@@ -333,33 +382,44 @@ def remove_duplicate(history, type):
     # (The history array is already sorted from newest to oldest)
     process_order = history if keep_strategy == 'newest' else history[::-1]
 
-    # First identify which entries are to keep and which are duplicates
+    # Track what we have decided to keep
+    seen_any = set()              # trakt_id seen at least once (when keep_per_day=False)
+    seen_dates = {}               # trakt_id -> set({YYYY-MM-DD,...}) (when keep_per_day=True)
+
     for i in process_order:
         trakt_id = i[entry_type]['ids']['trakt']
-        watched_date = i['watched_at'].split('T')[0]
+        watched_date = watched_date_in_tz(i['watched_at'], USER_TIMEZONE)
 
-        if trakt_id in entries:
-            # Check if it's a duplicate on the same day (if keeping per day)
-            if not keep_per_day or watched_date == entries[trakt_id][0]:
-                duplicates.append(i['id'])
-
-                # Save details for preview
-                if entry_type == 'movie':
-                    title = i['movie']['title']
-                else:
-                    show_title = i['show']['title']
-                    episode_title = i['episode']['title']
-                    season = i['episode']['season']
-                    number = i['episode']['number']
-                    title = f"{show_title} - S{season:02d}E{number:02d} - {episode_title}"
-
-                duplicate_details.append({
-                    'id': i['id'],
-                    'title': title,
-                    'watched_at': i['watched_at']
-                })
+        is_dup = False
+        if keep_per_day:
+            dates = seen_dates.setdefault(trakt_id, set())
+            if watched_date in dates:
+                is_dup = True
+            else:
+                dates.add(watched_date)
         else:
-            entries[trakt_id] = (watched_date, i['id'])
+            if trakt_id in seen_any:
+                is_dup = True
+            else:
+                seen_any.add(trakt_id)
+
+        if is_dup:
+            duplicates.append(i['id'])
+
+            if entry_type == 'movie':
+                title = i['movie']['title']
+            else:
+                show_title = i['show']['title']
+                episode_title = i['episode']['title']
+                season = i['episode']['season']
+                number = i['episode']['number']
+                title = f"{show_title} - S{season:02d}E{number:02d} - {episode_title}"
+
+            duplicate_details.append({
+                'id': i['id'],
+                'title': title,
+                'watched_at': i['watched_at']
+            })
 
     if len(duplicates) > 0:
         print('   %s %s duplicates plays found' % (len(duplicates), type))
@@ -396,6 +456,12 @@ def remove_duplicate(history, type):
 
 if __name__ == '__main__':
     login_to_trakt()
+
+    # Determine timezone for per-day grouping:
+    # - Use Trakt user setting if available
+    # - Fall back to UTC otherwise
+    USER_TIMEZONE = get_trakt_user_timezone()
+    print(f"Using timezone for per-day grouping: {USER_TIMEZONE}")
 
     for type in types:
         history = get_history(type)
