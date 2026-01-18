@@ -1,10 +1,16 @@
 import json
 import webbrowser
 import os
-
 import requests
+from datetime import datetime
 
-CONFIG_FILE = 'auth_config.json'
+"""Date"""
+current_date = datetime.today().strftime('%Y-%m-%d')
+
+"""Folder"""
+folder = os.path.expanduser('~/.local/share/trakt-tv-duplicates-removal/')
+
+CONFIG_FILE = folder + 'auth_config.json'
 
 
 def load_config():
@@ -399,9 +405,9 @@ if __name__ == '__main__':
 
     for type in types:
         history = get_history(type)
-        with open('%s.json' % type, 'w') as output:
+        with open(folder + '%s-%s.json' % (type, current_date), 'w') as output:
             json.dump(history, output, indent=4)
-            print('   History saved in file %s.json' % type)
+            print('   History saved in file %s-%s.json' % (type, current_date))
 
         if type == 'movies' and correct_movie_history:
             correct_movie_history_func(history)
