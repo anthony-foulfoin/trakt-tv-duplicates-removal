@@ -212,7 +212,8 @@ def get_trakt_user_timezone():
         # Validate it
         ZoneInfo(tz)
         return tz
-    except Exception:
+    except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+        print(f"Warning: Could not determine user timezone, falling back to UTC. Error: {e}")
         return "UTC"
 
 
