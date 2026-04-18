@@ -201,7 +201,7 @@ When you answer `no`, the script keeps only one play per movie or episode across
 When movie history correction is enabled, the script processes **movies only**:
 
 1. downloads your selected movie history
-2. saves it to `backup/movies.json`
+2. saves it to `backup/movies-YYYY-MM-DD.json`
 3. builds a unique movie list by Trakt movie ID
 4. fetches each movie's release date from the Trakt API
 5. shows a preview of the replacement entries
@@ -212,10 +212,10 @@ If no exact release date is available but the movie year exists, the script uses
 
 ## Output files
 
-For each selected content type, the script writes a local backup in the `backup` directory before making changes:
+For each selected content type, the script writes a local backup in the `backup` directory before making changes. The filename includes the current local date so previous backups from earlier days are not overwritten:
 
-- `backup/movies.json`
-- `backup/episodes.json`
+- `backup/movies-YYYY-MM-DD.json`
+- `backup/episodes-YYYY-MM-DD.json`
 
 It also stores saved credentials and tokens in:
 

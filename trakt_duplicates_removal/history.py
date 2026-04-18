@@ -114,10 +114,15 @@ def get_history(history_type, username):
     return results
 
 
+def get_backup_date_string():
+    """Return the current local date string used in backup filenames."""
+    return datetime.now().date().isoformat()
+
+
 def save_history_backup(history_type, history):
     """Write a local JSON backup before any destructive API call."""
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    backup_path = BACKUP_DIR / f'{history_type}.json'
+    backup_path = BACKUP_DIR / f'{history_type}-{get_backup_date_string()}.json'
     with backup_path.open('w', encoding='utf-8') as output:
         json.dump(history, output, indent=4)
     print(f'   History saved in file {backup_path.relative_to(backup_path.parent.parent)}')

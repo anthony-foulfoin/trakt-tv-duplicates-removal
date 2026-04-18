@@ -35,10 +35,13 @@ class HistoryTests(QuietTestCase):
         sample_history = [{'id': 1, 'movie': {'title': 'Movie'}}]
         with tempfile.TemporaryDirectory() as temp_dir:
             backup_dir = Path(temp_dir) / 'backup'
-            with patch('trakt_duplicates_removal.history.BACKUP_DIR', backup_dir):
+            with patch('trakt_duplicates_removal.history.BACKUP_DIR', backup_dir), patch(
+                'trakt_duplicates_removal.history.get_backup_date_string',
+                return_value='2026-04-18'
+            ):
                 history.save_history_backup('movies', sample_history)
 
-                output_path = backup_dir / 'movies.json'
+                output_path = backup_dir / 'movies-2026-04-18.json'
                 self.assertTrue(backup_dir.exists())
                 self.assertTrue(output_path.exists())
                 self.assertIn('Movie', output_path.read_text(encoding='utf-8'))
